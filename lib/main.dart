@@ -14,8 +14,10 @@ Future<void> checkUrlsWithDio(List<UrlEntry> urlEntries) async {
   final dio = Dio(
     BaseOptions(
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Connection': 'keep-alive',
       },
     ),
@@ -148,10 +150,10 @@ void callbackDispatcher() {
           final response = await dio.get(url);
           if (response.statusCode == 200) {
             // Handle response
-            print(response.data);
+            debugPrint(response.data);
           }
         } on DioException catch (e) {
-          print('Error: ${e.message}');
+          debugPrint('Error: ${e.message}');
         }
 
         final response = await http.get(
@@ -307,25 +309,6 @@ class _MyHomePageState extends State<MyHomePage> {
         debugPrint("Notification tapped with payload: ${response.payload}");
       },
     );
-  }
-
-  Future<void> _showNotification(String title, String body) async {
-    const AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-      'url_changes_channel', 'URL Changes', // Channel name
-      channelDescription: 'Notifications for URL content changes',
-      importance: Importance.max,
-      priority: Priority.high,
-      ticker: 'ticker',
-    );
-    const NotificationDetails notificationDetails =
-        NotificationDetails(android: androidNotificationDetails);
-    await _notificationsPlugin.show(
-        notificationid++, // Unique notification ID
-        title,
-        body,
-        notificationDetails,
-        payload: 'test');
   }
 
   void _saveUrls() async {
@@ -522,7 +505,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     child: Container(
                       decoration: BoxDecoration(
                         color: entry.isChecking
-                            ? Colors.grey.withOpacity(0.1)
+                            ? Colors.grey.withAlpha(26)
                             : Colors.white,
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -578,7 +561,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: entry.statusColor.withOpacity(0.1),
+                                  color: entry.statusColor.withAlpha(26),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -595,7 +578,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withOpacity(0.1),
+                                    color: Colors.green.withAlpha(26),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(
@@ -627,9 +610,11 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
 
             ElevatedButton(
-              onPressed: checkUrlsWithDio(_urlEntries),
+              onPressed: () =>
+                  _checkUrls(), // Wrap the Future-returning function
               child: const Text('Check URLs'),
             ),
+
             // Add the new button for "Hello World" notification
           ],
         ),
