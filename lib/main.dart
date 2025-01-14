@@ -5,16 +5,89 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:dio/dio.dart';
 
 int notificationid = 0;
 final List<UrlEntry> _urlEntries = [];
+
+Future<void> checkUrlsWithDio(List<UrlEntry> urlEntries) async {
+  final dio = Dio(
+    BaseOptions(
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Connection': 'keep-alive',
+      },
+    ),
+  );
+
+  for (final entry in urlEntries) {
+    final url = entry.urlController.text;
+    final regexString = entry.regexController.text;
+    RegExp? regex;
+
+    // Update the UI to indicate the check has started
+    entry.isChecking = true;
+    entry.regexMatches = false;
+    entry.status = 'Checking...';
+    entry.statusColor = Colors.blue;
+
+    try {
+      // Validate the regex
+      if (regexString.isNotEmpty) {
+        try {
+          regex = RegExp(regexString);
+        } catch (e) {
+          entry.status = 'Invalid Regex';
+          entry.statusColor = Colors.red;
+          entry.isChecking = false;
+          continue;
+        }
+      }
+
+      // Perform the GET request
+      final response = await dio.get(url);
+
+      // Process the response
+      if (response.statusCode == 200) {
+        final content = response.data.toString();
+
+        if (regex != null && regex.hasMatch(content)) {
+          entry.regexMatches = true;
+          entry.status = 'Matches Regex';
+          entry.statusColor = Colors.green;
+        } else {
+          entry.status = 'No Match';
+          entry.statusColor = Colors.orange;
+        }
+      } else {
+        entry.status = 'Error: ${response.statusCode}';
+        entry.statusColor = Colors.red;
+      }
+    } on DioError catch (e) {
+      // Handle HTTP or network errors
+      entry.status = 'Error: ${e.message}';
+      entry.statusColor = Colors.red;
+    } catch (e) {
+      // Handle other exceptions
+      entry.status = 'Unexpected Error';
+      entry.statusColor = Colors.red;
+    } finally {
+      // Update the UI to indicate the check has finished
+      entry.isChecking = false;
+    }
+  }
+}
 
 class MyHttpOverrides extends HttpOverrides {
   @override
   HttpClient createHttpClient(SecurityContext? context) {
     final client = super.createHttpClient(context);
+    // Accept invalid certificates (for debugging purposes only)
     client.badCertificateCallback =
         (X509Certificate cert, String host, int port) => true;
+
+    // Customize other SSL/TLS settings if needed
     return client;
   }
 }
@@ -62,7 +135,36 @@ void callbackDispatcher() {
     final urls = prefs.getStringList('urls') ?? [];
     for (final url in urls) {
       try {
-        final response = await http.get(Uri.parse(url));
+        final dio = Dio(
+          BaseOptions(
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            },
+          ),
+        );
+
+        try {
+          final response = await dio.get(url);
+          if (response.statusCode == 200) {
+            // Handle response
+            print(response.data);
+          }
+        } on DioError catch (e) {
+          print('Error: ${e.message}');
+        }
+
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Connection': 'keep-alive',
+          },
+        );
+
         if (response.statusCode == 200) {
           final savedContent = prefs.getString(url);
           if (savedContent == null) {
@@ -297,6 +399,9 @@ class _MyHomePageState extends State<MyHomePage> {
           headers: {
             'User-Agent':
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept':
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Connection': 'keep-alive',
           },
         );
 
@@ -522,7 +627,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
 
             ElevatedButton(
-              onPressed: _checkUrls,
+              onPressed: checkUrlsWithDio(_urlEntries),
               child: const Text('Check URLs'),
             ),
             // Add the new button for "Hello World" notification
