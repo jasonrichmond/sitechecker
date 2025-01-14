@@ -64,7 +64,7 @@ Future<void> checkUrlsWithDio(List<UrlEntry> urlEntries) async {
         entry.status = 'Error: ${response.statusCode}';
         entry.statusColor = Colors.red;
       }
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       // Handle HTTP or network errors
       entry.status = 'Error: ${e.message}';
       entry.statusColor = Colors.red;
@@ -150,7 +150,7 @@ void callbackDispatcher() {
             // Handle response
             print(response.data);
           }
-        } on DioError catch (e) {
+        } on DioException catch (e) {
           print('Error: ${e.message}');
         }
 
