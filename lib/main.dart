@@ -9,12 +9,24 @@ import 'package:workmanager/workmanager.dart';
 int notificationid = 0;
 final List<UrlEntry> _urlEntries = [];
 
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    final client = super.createHttpClient(context);
+    client.badCertificateCallback =
+        (X509Certificate cert, String host, int port) => true;
+    return client;
+  }
+}
+
 class UrlEntry {
   final TextEditingController titleController;
   final TextEditingController urlController;
   final TextEditingController regexController;
   String status;
   Color statusColor;
+  bool regexMatches; // Indicates regex match status
+  bool isChecking; // Indicates if the URL is being checked
 
   UrlEntry({
     required this.titleController,
@@ -22,6 +34,8 @@ class UrlEntry {
     required this.regexController,
     this.status = 'Unchanged',
     this.statusColor = Colors.grey,
+    this.regexMatches = false,
+    this.isChecking = false,
   });
 }
 
@@ -76,6 +90,7 @@ void callbackDispatcher() {
 }
 
 void main() {
+  HttpOverrides.global = MyHttpOverrides(); // Set the custom HttpOverrides
   runApp(const MyApp());
   Workmanager().initialize(
       callbackDispatcher, // The top level function, aka callbackDispatcher
@@ -254,6 +269,10 @@ class _MyHomePageState extends State<MyHomePage> {
     final prefs = await SharedPreferences.getInstance();
 
     for (final entry in _urlEntries) {
+      setState(() {
+        entry.isChecking = true; // Start checking
+      });
+
       final url = entry.urlController.text;
       final regexString = entry.regexController.text;
       RegExp? regex;
@@ -265,13 +284,22 @@ class _MyHomePageState extends State<MyHomePage> {
           setState(() {
             entry.status = 'Invalid Regex';
             entry.statusColor = Colors.red;
+            entry.regexMatches = false;
+            entry.isChecking = false;
           });
           continue;
         }
       }
 
       try {
-        final response = await http.get(Uri.parse(url));
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
+        );
+
         if (response.statusCode == 200) {
           final savedContent = prefs.getString(url);
           final newContent = response.body;
@@ -281,6 +309,7 @@ class _MyHomePageState extends State<MyHomePage> {
             setState(() {
               entry.status = 'First Check';
               entry.statusColor = Colors.blue;
+              entry.regexMatches = regex != null && regex.hasMatch(newContent);
             });
           } else if (savedContent != newContent) {
             if (regex == null || regex.hasMatch(newContent)) {
@@ -288,24 +317,32 @@ class _MyHomePageState extends State<MyHomePage> {
               setState(() {
                 entry.status = 'Changed';
                 entry.statusColor = Colors.green;
+                entry.regexMatches = true;
               });
             } else {
               setState(() {
                 entry.status = 'No Match';
                 entry.statusColor = Colors.orange;
+                entry.regexMatches = false;
               });
             }
           } else {
             setState(() {
               entry.status = 'Unchanged';
               entry.statusColor = Colors.grey;
+              entry.regexMatches = false;
             });
           }
         }
       } catch (e) {
         setState(() {
-          entry.status = 'Error';
+          entry.status = 'Error $e.message';
           entry.statusColor = Colors.red;
+          entry.regexMatches = false;
+        });
+      } finally {
+        setState(() {
+          entry.isChecking = false; // Stop checking
         });
       }
     }
@@ -326,21 +363,21 @@ class _MyHomePageState extends State<MyHomePage> {
       _urlEntries.add(entry);
     });
   }
-Future<void> _launchUrl(String url) async {
-  final Uri uri = Uri.parse(url);
 
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } else if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Could not launch $url'),
-        backgroundColor: Colors.red,
-      ),
-    );
+  Future<void> _launchUrl(String url) async {
+    final Uri uri = Uri.parse(url);
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not launch $url'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
-}
-
 
   @override
   void dispose() {
@@ -377,63 +414,107 @@ Future<void> _launchUrl(String url) async {
 
                   return Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: entry.titleController,
-                          decoration: InputDecoration(
-                            labelText: 'Title ${index + 1}',
-                            border: OutlineInputBorder(),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: entry.isChecking
+                            ? Colors.grey.withOpacity(0.1)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: entry.titleController,
+                            decoration: InputDecoration(
+                              labelText: 'Title ${index + 1}',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: entry.urlController,
-                          decoration: InputDecoration(
-                            labelText: 'URL ${index + 1}',
-                            border: OutlineInputBorder(),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: entry.urlController,
+                            decoration: InputDecoration(
+                              labelText: 'URL ${index + 1}',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: entry.regexController,
-                          decoration: InputDecoration(
-                            labelText: 'Regular Expression ${index + 1}',
-                            border: OutlineInputBorder(),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: entry.regexController,
+                            decoration: InputDecoration(
+                              labelText: 'Regular Expression ${index + 1}',
+                              border: OutlineInputBorder(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: entry.statusColor.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(4),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              // Checking Tag
+                              if (entry.isChecking)
+                                Row(
+                                  children: [
+                                    const SizedBox(
+                                      height: 16,
+                                      width: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Checking...',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              const SizedBox(width: 8),
+                              // Changed/New Tag
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: entry.statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  entry.status,
+                                  style: TextStyle(
+                                      color: entry.statusColor,
+                                      fontWeight: FontWeight.bold),
+                                ),
                               ),
-                              child: Text(
-                                entry.status,
-                                style: TextStyle(
-                                    color: entry.statusColor,
-                                    fontWeight: FontWeight.bold),
+                              const SizedBox(width: 8),
+                              // Regex Match Tag
+                              if (entry.regexMatches)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Matches Regex',
+                                    style: TextStyle(
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.open_in_browser),
+                                onPressed: () =>
+                                    _launchUrl(entry.urlController.text),
                               ),
-                            ),
-                            const Spacer(),
-                            IconButton(
-                              icon: const Icon(Icons.open_in_browser),
-                              onPressed: () =>
-                                  _launchUrl(entry.urlController.text),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deleteURL(index),
-                            ),
-                          ],
-                        ),
-                        const Divider(),
-                      ],
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => _deleteURL(index),
+                              ),
+                            ],
+                          ),
+                          const Divider(),
+                        ],
+                      ),
                     ),
                   );
                 },
