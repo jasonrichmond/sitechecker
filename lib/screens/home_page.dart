@@ -15,17 +15,21 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final List<TextEditingController> _controllers = [];
   final List<UrlEntry> _urlEntries = [];
 
   @override
   void initState() {
     super.initState();
     _loadUrls();
-    _checkUrls();
+
+    // Call _checkUrls after the widget is rendered
+    Future.delayed(Duration.zero, () {
+      debugPrint("Automatically calling _checkUrls on page initialization...");
+      _checkUrls();
+    });
   }
 
-  void _loadUrls() async {
+  Future<void> _loadUrls() async {
     final prefs = await SharedPreferences.getInstance();
     final titles = prefs.getStringList('titles') ?? [];
     final urls = prefs.getStringList('urls') ?? [];
@@ -50,7 +54,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _saveUrls() async {
+  Future<void> _saveUrls() async {
     final prefs = await SharedPreferences.getInstance();
 
     final titles =
@@ -64,55 +68,27 @@ class _MyHomePageState extends State<MyHomePage> {
     await prefs.setStringList('regexes', regexes);
   }
 
-  void _addNewUrlField() {
-    setState(() {
-      final entry = UrlEntry(
-        titleController: TextEditingController(),
-        urlController: TextEditingController(),
-        regexController: TextEditingController(),
-      );
-
-      entry.titleController.addListener(_saveUrls);
-      entry.urlController.addListener(_saveUrls);
-      entry.regexController.addListener(_saveUrls);
-
-      _urlEntries.add(entry);
-    });
-  }
-
-  void _deleteURL(int index) {
-    setState(() {
-      _urlEntries.removeAt(index);
-    });
-    _saveUrls();
-  }
-
-  Future<void> _launchUrl(String url) async {
-    final Uri uri = Uri.parse(url);
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not launch $url'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   Future<void> _checkUrls() async {
     for (final entry in _urlEntries) {
+      if (!mounted) return;
+
       setState(() {
+        entry.status = 'Checking...';
+        entry.statusColor = Colors.blue;
         entry.isChecking = true;
       });
 
-      await checkUrlsWithDio([entry]);
-
-      setState(() {
-        entry.isChecking = false;
-      });
+      try {
+        await checkUrlsWithDio([entry]);
+      } catch (e) {
+        debugPrint("Error checking URL: ${entry.urlController.text}, Error: $e");
+      } finally {
+        if (mounted) {
+          setState(() {
+            entry.isChecking = false;
+          });
+        }
+      }
     }
   }
 
@@ -173,50 +149,11 @@ class _MyHomePageState extends State<MyHomePage> {
                           Row(
                             children: [
                               if (entry.isChecking)
-                                Row(
-                                  children: const [
-                                    SizedBox(
-                                      height: 16,
-                                      width: 16,
-                                      child: CircularProgressIndicator(
-                                          strokeWidth: 2),
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'Checking...',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-                                  ],
-                                ),
-                              const SizedBox(width: 8),
-                              if (entry.status != null)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: entry.statusColor.withAlpha(26),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    entry.status,
-                                    style: TextStyle(
-                                        color: entry.statusColor,
-                                        fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              const Spacer(),
-                              IconButton(
-                                icon: const Icon(Icons.open_in_browser),
-                                onPressed: () =>
-                                    _launchUrl(entry.urlController.text),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => _deleteURL(index),
-                              ),
+                                const CircularProgressIndicator(),
+                              const SizedBox(width: 10),
+                              Text(entry.status),
                             ],
                           ),
-                          const Divider(),
                         ],
                       ),
                     ),
@@ -239,11 +176,19 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  @override
-  void dispose() {
-    for (var controller in _controllers) {
-      controller.dispose();
-    }
-    super.dispose();
+  void _addNewUrlField() {
+    setState(() {
+      final entry = UrlEntry(
+        titleController: TextEditingController(),
+        urlController: TextEditingController(),
+        regexController: TextEditingController(),
+      );
+
+      entry.titleController.addListener(_saveUrls);
+      entry.urlController.addListener(_saveUrls);
+      entry.regexController.addListener(_saveUrls);
+
+      _urlEntries.add(entry);
+    });
   }
 }

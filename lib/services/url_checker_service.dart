@@ -1,5 +1,7 @@
 // File: url_checker_service.dart
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../utils/url_entry.dart';
 
@@ -15,6 +17,12 @@ Future<void> checkUrlsWithDio(List<UrlEntry> urlEntries) async {
       },
     ),
   );
+
+  dio.httpClientAdapter = IOHttpClientAdapter()
+    ..onHttpClientCreate = (HttpClient client) {
+      client.badCertificateCallback = (cert, host, port) => true;
+      return client;
+    };
 
   for (final entry in urlEntries) {
     final url = entry.urlController.text;
@@ -56,7 +64,7 @@ Future<void> checkUrlsWithDio(List<UrlEntry> urlEntries) async {
         entry.statusColor = Colors.red;
       }
     } on DioException catch (e) {
-      entry.status = 'Error: ${e.message}';
+      entry.status = 'Error: ${e.error}';
       entry.statusColor = Colors.red;
     } catch (e) {
       entry.status = 'Unexpected Error';
